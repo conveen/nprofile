@@ -1,0 +1,12 @@
+[package]
+name = "libnprofile"
+version = "0.2.0"
+authors = ["conveen <conveen@protonmail.com>"]
+edition = "2021"
+
+[dependencies]
+interpolator = { version = "0.5", features = ["debug"] }
+log = { workspace = true }
+serde = { workspace = true }
+thiserror = "1.0"
+toml = { workspace = true }

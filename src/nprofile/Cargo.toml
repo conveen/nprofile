@@ -1,0 +1,16 @@
+[package]
+name = "nprofile"
+version = "0.1.0"
+authors = ["conveen <conveen@protonmail.com>"]
+edition = "2021"
+
+[features]
+nmcli = []
+
+[dependencies]
+clap = { version = "4.5.2", features = ["derive", "env"] }
+env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
+libnprofile = { path = "../libnprofile", version = "0.2.0" }
+log = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
