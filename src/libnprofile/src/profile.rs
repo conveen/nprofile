@@ -42,6 +42,9 @@ impl CommandString {
 pub struct ProfileEnvironment {
     /// Shell to run commands with.
     pub shell: Option<String>,
+    /// Command arguments.
+    /// Parameters injected into commands before they're run.
+    pub parameters: Option<HashMap<String, String>>,
     /// Command to determine whether profile can be enabled.
     pub can_enable: CommandString,
     /// Command to determine whether profile is already enabled.
@@ -68,7 +71,7 @@ pub struct ProfileEnvironment {
 /// [[profiles]]
 /// name = "wifi"
 /// aliases = ["w"]
-/// [profiles.parameters]
+/// [profiles.envs.linux-nmcli.parameters]
 /// device = "wifi"
 /// ssid = "SomeSSID"
 /// [profiles.envs.linux-nmcli]
@@ -93,9 +96,6 @@ pub struct Profile {
     /// Profile dependencies.
     /// Refers to one or more profile names or aliases.
     pub dependencies: Option<Vec<String>>,
-    /// Profile arguments.
-    /// Parameters injected into commands before they're run.
-    pub parameters: Option<HashMap<String, String>>,
     /// Profile environments.
     pub envs: HashMap<String, ProfileEnvironment>,
 }
@@ -103,14 +103,14 @@ pub struct Profile {
 impl Profile {
     /// Transform arguments for use in the profile commands.
     ///
-    /// [`Profile::parameters`] defines the valid parameters for a profile.
+    /// [`ProfileEnvironment::parameters`] defines the valid parameters for a profile environment.
     /// Only arguments for defined parameters are included, others are filtered out.
     /// Default parameter values are used if no arguments are provided.
     ///
     /// For example, given a profile with the following parameters:
     ///
     /// ```toml
-    /// [profiles.parameters]
+    /// [profiles.envs.some-env.parameters]
     /// device = "wifi"
     /// ssid = "SomeSSID"
     /// ```
@@ -121,9 +121,10 @@ impl Profile {
     /// Default parameter values can also be empty `""`.
     fn transform_args<'a: 'b, 'b>(
         &'a self,
+        environment: &'a ProfileEnvironment,
         args: Option<&'a HashMap<String, String>>,
     ) -> Option<HashMap<&'b str, interpolator::Formattable<'b>>> {
-        self.parameters.as_ref().map(move |parameters| {
+        environment.parameters.as_ref().map(move |parameters| {
             parameters
                 .iter()
                 .map(|(k, v)| {
@@ -279,7 +280,7 @@ impl Profile {
         S: AsRef<str>,
     {
         let environment = self.get_environment(environment_name)?;
-        let formattable_args = self.transform_args(args);
+        let formattable_args = self.transform_args(environment, args);
         self._can_enable(environment, formattable_args.as_ref())?;
         if !self._is_enabled(environment, formattable_args.as_ref())? {
             self._enable(environment, formattable_args.as_ref())?;
@@ -299,7 +300,7 @@ impl Profile {
         S: AsRef<str>,
     {
         let environment = self.get_environment(environment_name)?;
-        let formattable_args = self.transform_args(args);
+        let formattable_args = self.transform_args(environment, args);
         if self._is_enabled(environment, formattable_args.as_ref())? {
             self._disable(environment, formattable_args.as_ref())?;
         }
