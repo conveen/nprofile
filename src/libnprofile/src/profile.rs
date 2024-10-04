@@ -55,6 +55,30 @@ pub struct ProfileEnvironment {
     pub disable: CommandString,
 }
 
+/// Dependency profile.
+///
+/// Profiles may depend on one or more other profiles,
+/// and may optionally specify the environment they depend on
+/// (if a different environment is required).
+#[derive(Debug)]
+pub struct Dependency {
+    pub name: String,
+    pub env_name: Option<String>,
+}
+
+impl<'de> serde::Deserialize<'de> for Dependency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw: String = serde::Deserialize::deserialize(deserializer)?;
+        let delim_pos = raw.find(':');
+        let name = raw[..delim_pos.unwrap_or(raw.len() - 1)].to_string();
+        let env_name = delim_pos.map(|pos| raw[pos + 1..].to_string());
+        Ok(Dependency { name, env_name })
+    }
+}
+
 /// Profile.
 ///
 /// Profiles are metadata and instructions for configuring networking on a host.
@@ -95,9 +119,10 @@ pub struct Profile {
     pub aliases: Option<Vec<String>>,
     /// Profile dependencies.
     /// Refers to one or more profile names or aliases.
-    pub dependencies: Option<Vec<String>>,
+    pub dependencies: Option<Vec<Dependency>>,
     /// Profile environments.
-    pub envs: HashMap<String, ProfileEnvironment>,
+    /// Dependency-only environments do not define any envs.
+    pub envs: Option<HashMap<String, ProfileEnvironment>>,
 }
 
 impl Profile {
@@ -142,7 +167,12 @@ impl Profile {
     ///
     /// [`crate::error::Error::InvalidEnvironment`]: If the environment is not defined for the profile.
     fn get_environment<S: AsRef<str>>(&self, environment_name: S) -> crate::error::Result<&ProfileEnvironment> {
-        self.envs.get(environment_name.as_ref()).ok_or_else(|| crate::error::Error::InvalidEnvironment {
+        let env = match self.envs.as_ref() {
+            Some(envs) => envs.get(environment_name.as_ref()),
+            None => None,
+        };
+
+        env.ok_or_else(|| crate::error::Error::InvalidEnvironment {
             environment: environment_name.as_ref().to_owned(),
             profile: self.name.to_owned(),
         })
@@ -268,6 +298,27 @@ impl Profile {
         }
     }
 
+    /// Check whether the profile is a Composition Profile.
+    pub fn is_composition_profile(&self) -> bool {
+        self.envs.is_none() && !self.dependencies.is_none()
+    }
+
+    /// Validate the profile.
+    ///
+    /// # Rules
+    ///
+    /// 1. Only composition profiles, which compose one or more profiles with no additional logic, can leave `envs` empty.
+    pub fn is_valid(&self) -> crate::error::Result<()> {
+        if self.envs.is_none() && self.dependencies.is_none() {
+            return Err(crate::error::Error::InvalidProfile {
+                profile: self.name.to_string(),
+                message: "One or more environments must be defined".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Enable the profile using the given environment.
     ///
     /// # Errors
@@ -314,4 +365,14 @@ impl Profile {
 pub struct ProfileConfig {
     /// The list of profiles defined in the config.
     pub profiles: Vec<Profile>,
+}
+
+impl ProfileConfig {
+    pub fn is_valid(&self) -> crate::error::Result<()> {
+        for profile in self.profiles.iter() {
+            profile.is_valid()?;
+        }
+
+        Ok(())
+    }
 }

@@ -10,6 +10,9 @@ pub enum Error {
     /// Environment is not defined for a profile.
     #[error("Environment {environment} not defined for profile {profile}")]
     InvalidEnvironment { environment: String, profile: String },
+    /// Profile is not valid.
+    #[error("Profile {profile} is invalid: {message}")]
+    InvalidProfile { profile: String, message: String },
     /// IO errors.
     #[error(transparent)]
     Io(#[from] std::io::Error),

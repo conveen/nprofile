@@ -116,6 +116,10 @@ impl Cli {
             log::error!("Failed to read config file: {}", err.to_string());
             std::process::exit(1);
         });
+        if let Err(err) = config.is_valid() {
+            log::error!("{}", err.to_string());
+            std::process::exit(1);
+        }
         log::debug!(
             "Loaded profile config from {:?}, contains {:02} profiles",
             self.config_path,
@@ -141,21 +145,22 @@ impl Cli {
         &'a self,
         profile_map: &'b HashMap<&'b str, &'b Profile>,
         config: &'b ProfileConfig,
-    ) -> Vec<&'b Profile> {
+    ) -> Vec<(&'b Profile, Option<&'b str>)> {
         if let Some(profile) = profile_map.get(self.profile_name.as_str()) {
-            let mut profiles =
-                Vec::<&Profile>::with_capacity(profile.dependencies.as_ref().map(Vec::len).unwrap_or(0) + 1);
+            let mut profiles = Vec::with_capacity(profile.dependencies.as_ref().map(Vec::len).unwrap_or(0) + 1);
             if let Some(dependencies) = profile.dependencies.as_ref() {
                 for dependency in dependencies {
-                    if let Some(dependency_profile) = profile_map.get(dependency.as_str()) {
-                        profiles.push(dependency_profile);
+                    if let Some(dependency_profile) = profile_map.get(dependency.name.as_str()) {
+                        profiles.push((*dependency_profile, dependency.env_name.as_deref()));
                     } else {
-                        log::error!("invalid dependency profile name {}", dependency);
+                        log::error!("Invalid dependency profile name {}", dependency.name);
                         std::process::exit(1);
                     }
                 }
             }
-            profiles.push(profile);
+            if !profile.is_composition_profile() {
+                profiles.push((profile, None));
+            }
             profiles
         } else {
             log::error!(
@@ -167,11 +172,12 @@ impl Cli {
         }
     }
 
-    fn run_profile_action(&self, profile: &Profile, action: CoreProfileAction) {
+    fn run_profile_action(&self, profile: &Profile, environment_name: Option<&str>, action: CoreProfileAction) {
+        let environment_name = environment_name.unwrap_or(self.environment_name.as_str());
         match action {
             CoreProfileAction::Enable => {
                 log::info!("Enabling profile {} using environment {}", profile.name, self.environment_name);
-                if let Err(err) = profile.enable(&self.environment_name, self.profile_args.as_ref()) {
+                if let Err(err) = profile.enable(environment_name, self.profile_args.as_ref()) {
                     log::error!("Failed to enable profile: {}", err);
                     std::process::exit(1);
                 }
@@ -179,7 +185,7 @@ impl Cli {
             },
             CoreProfileAction::Disable => {
                 log::info!("Disabling profile {} using environment {}", profile.name, self.environment_name);
-                if let Err(err) = profile.disable(&self.environment_name, self.profile_args.as_ref()) {
+                if let Err(err) = profile.disable(environment_name, self.profile_args.as_ref()) {
                     log::error!("Failed to disable profile: {}", err);
                     std::process::exit(1);
                 }
@@ -198,21 +204,21 @@ impl Cli {
 
         match self.action {
             ProfileAction::Disable => {
-                for profile in profiles.iter().rev() {
-                    self.run_profile_action(profile, CoreProfileAction::Disable);
+                for (profile, environment_name) in profiles.into_iter().rev() {
+                    self.run_profile_action(profile, environment_name, CoreProfileAction::Disable);
                 }
             },
             ProfileAction::Enable => {
-                for profile in profiles {
-                    self.run_profile_action(profile, CoreProfileAction::Enable);
+                for (profile, environment_name) in profiles {
+                    self.run_profile_action(profile, environment_name, CoreProfileAction::Enable);
                 }
             },
             ProfileAction::Reset => {
-                for profile in profiles.iter().rev() {
-                    self.run_profile_action(profile, CoreProfileAction::Disable);
+                for (profile, environment_name) in profiles.iter().rev() {
+                    self.run_profile_action(*profile, *environment_name, CoreProfileAction::Disable);
                 }
-                for profile in profiles {
-                    self.run_profile_action(profile, CoreProfileAction::Enable);
+                for (profile, environment_name) in profiles {
+                    self.run_profile_action(profile, environment_name, CoreProfileAction::Enable);
                 }
             },
         }
