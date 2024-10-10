@@ -73,7 +73,7 @@ impl<'de> serde::Deserialize<'de> for Dependency {
     {
         let raw: String = serde::Deserialize::deserialize(deserializer)?;
         let delim_pos = raw.find(':');
-        let name = raw[..delim_pos.unwrap_or(raw.len() - 1)].to_string();
+        let name = raw[..delim_pos.unwrap_or(raw.len())].to_string();
         let env_name = delim_pos.map(|pos| raw[pos + 1..].to_string());
         Ok(Dependency { name, env_name })
     }
